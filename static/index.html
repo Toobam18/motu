@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTU · Route Planner</title>
+<style>
+  :root {
+    --bg: #0a0f1e;
+    --panel: #111832;
+    --panel-2: #0d1429;
+    --line: #222c4d;
+    --line-2: #2e3a63;
+    --text: #e7eaf6;
+    --muted: #8892b5;
+    --accent: #5b8cff;
+    --accent-2: #7aa2ff;
+    --start: #22c55e;
+    --goal: #38bdf8;
+    --blocked: #f43f5e;
+    --indoor: #fb7185;
+    --ucs: #f5a524;
+    --astar: #a78bfa;
+    --greedy: #34d399;
+    --radius: 14px;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+  body {
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(91,140,255,.12), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(167,139,250,.08), transparent 60%),
+      var(--bg);
+  }
+  button, input, select { font: inherit; color: inherit; }
+
+  .app { display: grid; grid-template-columns: 320px 1fr; gap: 20px; padding: 20px; min-height: 100vh; }
+
+  /* ---------- sidebar ---------- */
+  .side {
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px; display: flex; flex-direction: column; gap: 22px;
+    position: sticky; top: 20px; align-self: start; max-height: calc(100vh - 40px); overflow: auto;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), #a78bfa); font-weight: 800; font-size: 20px;
+    box-shadow: 0 8px 24px rgba(91,140,255,.35);
+  }
+  .brand h1 { margin: 0; font-size: 18px; letter-spacing: .5px; }
+  .brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+
+  h2 { margin: 0 0 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--muted); font-weight: 600; }
+  section { display: flex; flex-direction: column; gap: 12px; }
+  label.lbl { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #c5cbe3; }
+
+  select, input[type=number] {
+    background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px;
+    padding: 9px 11px; outline: none; transition: border-color .15s, box-shadow .15s; width: 100%;
+  }
+  select:focus, input[type=number]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(91,140,255,.2); }
+
+  .seedrow { display: flex; gap: 8px; align-items: flex-end; }
+  .seedrow .lbl { flex: 1; }
+  .icon-btn {
+    width: 42px; height: 40px; border-radius: 10px; border: 1px solid var(--line-2);
+    background: var(--panel-2); cursor: pointer; font-size: 18px; transition: transform .15s, border-color .15s;
+  }
+  .icon-btn:hover { border-color: var(--accent); transform: rotate(-12deg); }
+
+  details { border: 1px solid var(--line); border-radius: 12px; padding: 4px 12px 10px; background: rgba(0,0,0,.12); }
+  details[aria-disabled=true] { opacity: .4; pointer-events: none; }
+  summary { cursor: pointer; padding: 8px 0; font-size: 13px; color: #c5cbe3; list-style: none; display: flex; justify-content: space-between; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "▾"; color: var(--muted); transition: transform .2s; }
+  details:not([open]) summary::after { transform: rotate(-90deg); }
+
+  .field { padding: 7px 0; }
+  .flabel { display: flex; justify-content: space-between; font-size: 12.5px; color: #c5cbe3; margin-bottom: 6px; }
+  .flabel output { color: var(--accent-2); font-variant-numeric: tabular-nums; font-weight: 600; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 99px; background: var(--line-2); outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 3px solid #dfe7ff; cursor: pointer; box-shadow: 0 2px 8px rgba(91,140,255,.5); }
+  input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); border: 3px solid #dfe7ff; cursor: pointer; }
+  .check { display: flex; gap: 9px; align-items: center; font-size: 13px; color: #c5cbe3; cursor: pointer; }
+  .check input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+  .btn {
+    border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 10px; padding: 10px 14px;
+    cursor: pointer; font-weight: 600; font-size: 13.5px; transition: all .15s;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), #6f7dff); border-color: transparent; box-shadow: 0 6px 18px rgba(91,140,255,.35); }
+  .btn.primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .hint { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* ---------- main ---------- */
+  main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .card { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--line); border-radius: var(--radius); }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; flex-wrap: wrap; }
+  .toolbar .title { font-size: 12px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--muted); margin-right: 4px; }
+  .chip {
+    --c: var(--accent);
+    display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px; border-radius: 99px;
+    border: 1px solid var(--line-2); background: var(--panel-2); cursor: pointer; user-select: none;
+    font-size: 13.5px; font-weight: 600; transition: all .18s;
+  }
+  .chip input { display: none; }
+  .chip .box {
+    width: 16px; height: 16px; border-radius: 5px; border: 2px solid var(--c); display: grid; place-items: center;
+    transition: background .15s;
+  }
+  .chip .box::after { content: ""; width: 8px; height: 4px; border: 2px solid #0a0f1e; border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px,-1px); opacity: 0; }
+  .chip:has(input:checked) { border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, var(--panel-2)); }
+  .chip:has(input:checked) .box { background: var(--c); }
+  .chip:has(input:checked) .box::after { opacity: 1; }
+  .spacer { flex: 1; }
+  .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #c5cbe3; cursor: pointer; }
+  .toggle input { accent-color: var(--accent); }
+
+  .stage { position: relative; overflow: hidden; }
+  #svg { display: block; width: 100%; aspect-ratio: 1000 / 640; cursor: grab; touch-action: none; }
+  #svg.dragging { cursor: grabbing; }
+  .overlay-tl { position: absolute; top: 12px; left: 14px; font-size: 12px; color: var(--muted); pointer-events: none; }
+  .overlay-tl b { color: var(--text); font-weight: 600; }
+  .zoom { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; }
+  .zoom button { width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--line-2); background: rgba(13,20,41,.85); cursor: pointer; backdrop-filter: blur(6px); }
+  .zoom button:hover { border-color: var(--accent); }
+  .legend { position: absolute; left: 14px; bottom: 12px; display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); background: rgba(13,20,41,.75); padding: 7px 11px; border-radius: 10px; border: 1px solid var(--line); backdrop-filter: blur(6px); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .sw.line { width: 18px; height: 0; border-top: 2px dashed; border-radius: 0; }
+  .empty-map { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; pointer-events: none; }
+
+  .stats { display: flex; gap: 8px; flex-wrap: wrap; }
+  .stat { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); font-size: 12px; color: var(--muted); }
+  .stat b { color: var(--text); font-size: 14px; margin-left: 5px; font-variant-numeric: tabular-nums; }
+
+  .results { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .result { --c: var(--accent); padding: 14px 16px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel); cursor: pointer; transition: all .18s; animation: rise .35s ease both; }
+  .result:hover { border-color: var(--line-2); }
+  .result.focus { border-color: var(--c); box-shadow: 0 0 0 1px var(--c), 0 10px 30px color-mix(in srgb, var(--c) 20%, transparent); }
+  .result h3 { margin: 0 0 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .result h3 .sw { background: var(--c); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .route { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; font-size: 12px; }
+  .route span { padding: 2px 7px; border-radius: 6px; background: color-mix(in srgb, var(--c) 18%, transparent); }
+  .route i { color: var(--muted); font-style: normal; }
+  .pending { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .pending code { color: var(--accent-2); background: rgba(91,140,255,.1); padding: 1px 5px; border-radius: 5px; }
+  .empty { grid-column: 1 / -1; padding: 18px; border: 1px dashed var(--line-2); border-radius: var(--radius); color: var(--muted); font-size: 13.5px; text-align: center; }
+  .empty b { color: var(--text); }
+
+  #toast { position: fixed; bottom: 22px; left: 50%; transform: translate(-50%, 20px); opacity: 0; background: #1b2347; border: 1px solid var(--line-2); padding: 10px 16px; border-radius: 10px; font-size: 13.5px; transition: all .25s; pointer-events: none; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- svg graph ---------- */
+  .edge { stroke: #3a4673; stroke-width: 2.2; stroke-linecap: round; animation: fade .5s ease both; transition: stroke .2s; }
+  .edge.indoor { stroke: var(--indoor); stroke-dasharray: 7 6; opacity: .85; }
+  .edge.hot { stroke: #9fb3ff; }
+  .blocked { stroke: var(--blocked); stroke-width: 1.6; stroke-dasharray: 3 6; opacity: .45; animation: fade .5s ease both; }
+  .costlbl rect { fill: #0e1530; stroke: #26305a; }
+  .costlbl text { fill: #b8c2e6; font-size: 11px; font-weight: 600; text-anchor: middle; dominant-baseline: central; font-variant-numeric: tabular-nums; }
+  .costlbl { animation: fade .6s ease both; pointer-events: none; }
+  .node { cursor: pointer; }
+  .node circle.body { fill: #1a2448; stroke: #4b5a90; stroke-width: 2; transition: fill .2s, stroke .2s, r .2s; transform-box: fill-box; transform-origin: center; animation: pop .5s cubic-bezier(.2,.9,.3,1.35) both; }
+  .node text { fill: #dfe5ff; font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; animation: fade .5s ease both; }
+  .node:hover circle.body { stroke: var(--accent-2); fill: #22305e; }
+  .node.indoor circle.body { stroke: var(--indoor); }
+  .node.onpath circle.body { fill: #2a3466; stroke: #c9d3ff; }
+  .node.start circle.body { fill: var(--start); stroke: #bbf7d0; }
+  .node.goal circle.body { fill: var(--goal); stroke: #bae6fd; }
+  .node.start text, .node.goal text { fill: #04121f; }
+  .halo { fill: none; stroke-width: 2; stroke-dasharray: 4 4; opacity: .9; animation: fade .3s ease both; }
+  .pulse { fill: none; stroke-width: 2; animation: pulse 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; pointer-events: none; }
+  .routeline { fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: .95; filter: url(#glow); }
+
+  @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  @keyframes pulse { from { transform: scale(1); opacity: .8; } to { transform: scale(1.9); opacity: 0; } }
+  @keyframes draw { from { stroke-dashoffset: var(--len); } to { stroke-dashoffset: 0; } }
+
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    .side { position: static; max-height: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">M</div>
+      <div><h1>MOTU</h1><p>Mapping Ontario Tech University · Route planner</p></div>
+    </div>
+
+    <section>
+      <h2>Environment</h2>
+      <label class="lbl">Map
+        <select id="preset"></select>
+      </label>
+      <div class="seedrow">
+        <label class="lbl">Seed
+          <input id="seed" type="number" min="0" placeholder="random">
+        </label>
+        <button class="icon-btn" id="dice" title="New random graph">🎲</button>
+      </div>
+      <details id="adv" open>
+        <summary>Graph settings</summary>
+        <div id="fields"></div>
+      </details>
+      <button class="btn primary" id="generate">Generate graph</button>
+    </section>
+
+    <section>
+      <h2>Start &amp; goal</h2>
+      <label class="lbl">Distance between them
+        <select id="band"></select>
+      </label>
+      <div class="two">
+        <label class="lbl">Start <select id="startSel"></select></label>
+        <label class="lbl">Goal <select id="goalSel"></select></label>
+      </div>
+      <button class="btn" id="pair">Random pair</button>
+      <p class="hint">Or click a node on the map: first click sets the start, the next sets the goal.</p>
+    </section>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <main>
+    <div class="card toolbar">
+      <span class="title">Algorithms</span>
+      <div id="algos" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      <div class="spacer"></div>
+      <label class="toggle"><input type="checkbox" id="showCosts" checked> Show costs</label>
+      <button class="btn primary" id="run">Run selected</button>
+    </div>
+
+    <div class="card stage">
+      <svg id="svg" viewBox="0 0 1000 640" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="overlay-tl" id="mapname"></div>
+      <div class="zoom">
+        <button id="zin" title="Zoom in">+</button>
+        <button id="zout" title="Zoom out">−</button>
+        <button id="zfit" title="Fit">⤢</button>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="empty-map" id="emptyMap">Generating…</div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+    <div class="results" id="results"></div>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   MOTU front end. All graph data comes from app.py -> script.py.
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const NS = "http://www.w3.org/2000/svg";
+const W = 1000, H = 640, PAD = 60;
+const COLORS = { ucs: "#f5a524", astar: "#a78bfa", greedy: "#34d399" };
+const PRESET_LABELS = {
+  campus: "Campus (hand-built OTU map)", tiny: "Tiny · 6 nodes", small_sparse: "Small · sparse",
+  small_dense: "Small · dense", medium: "Medium", medium_skewed: "Medium · skewed costs",
+  medium_bimodal: "Medium · highways vs back roads", medium_blocked: "Medium · 30% blocked",
+  large: "Large · 29 nodes", large_dense: "Large · dense",
+};
+const BAND_LABELS = { near: "Near", medium: "Medium", far: "Far", any: "Any" };
+
+// Every knob of generate_random_graph that the user can change.
+const FIELDS = [
+  { key: "n_nodes",          label: "Locations",           type: "range", min: 2,  max: 29,  step: 1 },
+  { key: "avg_degree",       label: "Average degree",      type: "range", min: 1,  max: 10,  step: 0.5 },
+  { key: "min_degree",       label: "Minimum degree",      type: "range", min: 1,  max: 5,   step: 1 },
+  { key: "cost_dist",        label: "Cost distribution",   type: "select" },
+  { key: "cost_spread",      label: "Cost spread",         type: "range", min: 0,  max: 3,   step: 0.1 },
+  { key: "obstacle_density", label: "Blocked edges",       type: "range", min: 0,  max: 0.6, step: 0.05, fmt: v => Math.round(v * 100) + "%" },
+  { key: "min_cost",         label: "Cheapest edge",       type: "range", min: 10, max: 120, step: 5,   fmt: v => v + " s" },
+  { key: "base_cost",        label: "Typical edge",        type: "range", min: 30, max: 300, step: 10,  fmt: v => v + " s" },
+  { key: "keep_connected",   label: "Keep map connected",  type: "check" },
+];
+
+const S = {
+  config: null, graph: null, spec: null, start: null, goal: null,
+  results: [], focus: null, turn: "start", pos: {}, layers: {}, nodeEls: {},
+  vb: { x: 0, y: 0, w: W, h: H }, req: 0,
+};
+
+/* ---------------- small helpers ---------------- */
+function svgEl(tag, attrs = {}, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+async function api(path, body) {
+  const opts = body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {};
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+let toastTimer;
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+const fmtTime = s => s == null ? "—" : s >= 60 ? `${s} s (${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s)` : `${s} s`;
+
+/* ---------------- sidebar controls ---------------- */
+function buildControls() {
+  const cfg = S.config;
+  const preset = $("#preset");
+  for (const name of Object.keys(cfg.presets)) preset.add(new Option(PRESET_LABELS[name] || name, name));
+  for (const b of cfg.bands) $("#band").add(new Option(BAND_LABELS[b] || b, b));
+  $("#band").value = "far";
+
+  const box = $("#fields");
+  for (const f of FIELDS) {
+    const wrap = document.createElement("div");
+    wrap.className = "field";
+    if (f.type === "range") {
+      wrap.innerHTML = `<div class="flabel"><span>${f.label}</span><output id="o_${f.key}"></output></div>
+        <input type="range" id="f_${f.key}" min="${f.min}" max="${f.max}" step="${f.step}">`;
+    } else if (f.type === "select") {
+      wrap.innerHTML = `<label class="lbl">${f.label}<select id="f_${f.key}">
+        ${cfg.cost_distributions.map(d => `<option value="${d}">${d}</option>`).join("")}</select></label>`;
+    } else {
+      wrap.innerHTML = `<label class="check"><input type="checkbox" id="f_${f.key}"> ${f.label}</label>`;
+    }
+    box.appendChild(wrap);
+    const input = wrap.querySelector(`#f_${f.key}`);
+    input.addEventListener("input", () => { showValue(f); scheduleRegen(); });
+  }
+
+  const algos = $("#algos");
+  for (const a of cfg.algorithms) {
+    const chip = document.createElement("label");
+    chip.className = "chip";
+    chip.style.setProperty("--c", COLORS[a.id] || "#5b8cff");
+    chip.innerHTML = `<input type="checkbox" value="${a.id}" checked><span class="box"></span>${a.name}`;
+    algos.appendChild(chip);
+  }
+}
+function showValue(f) {
+  const el = $(`#f_${f.key}`), out = $(`#o_${f.key}`);
+  if (out) out.textContent = f.fmt ? f.fmt(+el.value) : el.value;
+}
+function applyPreset() {
+  const name = $("#preset").value, p = S.config.presets[name];
+  const isCampus = p === null;
+  $("#adv").setAttribute("aria-disabled", isCampus);
+  $("#seed").disabled = $("#dice").disabled = isCampus;
+  if (isCampus) return;
+  for (const f of FIELDS) {
+    const el = $(`#f_${f.key}`);
+    if (f.type === "check") el.checked = !!p[f.key]; else el.value = p[f.key];
+    showValue(f);
+  }
+}
+function readFields() {
+  const out = {};
+  for (const f of FIELDS) {
+    const el = $(`#f_${f.key}`);
+    out[f.key] = f.type === "check" ? el.checked : f.type === "select" ? el.value : +el.value;
+  }
+  return out;
+}
+let regenTimer;
+function scheduleRegen() { clearTimeout(regenTimer); regenTimer = setTimeout(generate, 260); }
+
+function fillNodeSelects() {
+  for (const id of ["#startSel", "#goalSel"]) {
+    const sel = $(id); sel.innerHTML = "";
+    sel.add(new Option("—", ""));
+    for (const n of S.graph.nodes) sel.add(new Option(n.id, n.id));
+  }
+  syncSelects();
+}
+function syncSelects() { $("#startSel").value = S.start || ""; $("#goalSel").value = S.goal || ""; }
+
+/* ---------------- talking to app.py ---------------- */
+async function generate() {
+  const preset = $("#preset").value;
+  const spec = { preset, seed: $("#seed").value, params: preset === "campus" ? {} : readFields() };
+  const ticket = ++S.req;                       // ignore out-of-date replies
+  try {
+    const g = await api("/api/graph", { spec, band: $("#band").value });
+    if (ticket !== S.req) return;
+    S.graph = g;
+    S.spec = { ...spec, seed: g.seed };          // remember the real seed -> reproducible
+    if (g.seed != null) $("#seed").value = g.seed;
+    S.start = g.start; S.goal = g.goal; S.turn = "start";
+    S.results = []; S.focus = null;
+    fillNodeSelects(); drawGraph(); renderStats(); renderResults();
+  } catch (e) { toast(e.message); }
+}
+async function randomPair() {
+  if (!S.spec) return;
+  try {
+    const p = await api("/api/pair", { spec: S.spec, band: $("#band").value });
+    if (!p.start) return toast("No connected pair exists on this map");
+    setPair(p.start, p.goal);
+  } catch (e) { toast(e.message); }
+}
+async function run() {
+  const ids = [...document.querySelectorAll("#algos input:checked")].map(i => i.value);
+  if (!ids.length) return toast("Tick at least one algorithm");
+  if (!S.start || !S.goal) return toast("Pick a start and a goal first");
+  try {
+    const res = await api("/api/search", { spec: S.spec, start: S.start, goal: S.goal, algorithms: ids });
+    S.results = res.results;
+    S.focus = (S.results.find(r => r.status === "ok") || {}).id || null;
+    renderResults(); paintState();
+  } catch (e) { toast(e.message); }
+}
+function setPair(start, goal) {
+  S.start = start; S.goal = goal; S.results = []; S.focus = null;
+  syncSelects(); renderResults(); paintState();
+}
+
+/* ---------------- drawing the graph ---------------- */
+function drawGraph() {
+  const g = S.graph, svg = $("#svg");
+  svg.innerHTML = "";
+  $("#emptyMap").style.display = "none";
+  $("#mapname").innerHTML = `<b>${g.name}</b>`;
+
+  // fit the map into the canvas, keep aspect ratio, flip y (maps have y up)
+  const xs = g.nodes.map(n => n.x), ys = g.nodes.map(n => n.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const k = Math.min((W - 2 * PAD) / ((maxX - minX) || 1), (H - 2 * PAD) / ((maxY - minY) || 1));
+  const ox = (W - (maxX - minX) * k) / 2, oy = (H - (maxY - minY) * k) / 2;
+  S.pos = {};
+  for (const n of g.nodes) S.pos[n.id] = [ox + (n.x - minX) * k, H - oy - (n.y - minY) * k];
+
+  const defs = svgEl("defs", {}, svg);
+  defs.innerHTML = `
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#151d3a" stroke-width="1"/>
+    </pattern>`;
+  svgEl("rect", { x: -4000, y: -4000, width: 9000, height: 9000, fill: "url(#grid)" }, svg);
+
+  const L = S.layers = {};
+  for (const name of ["blocked", "edges", "routes", "labels", "halos", "nodes"]) L[name] = svgEl("g", {}, svg);
+
+  for (const [a, b] of g.blocked) {
+    const [x1, y1] = S.pos[a], [x2, y2] = S.pos[b];
+    const ln = svgEl("line", { x1, y1, x2, y2, class: "blocked" }, L.blocked);
+    svgEl("title", {}, ln).textContent = `${a} ↔ ${b}: blocked`;
+  }
+
+  S.edgeEls = [];
+  g.edges.forEach((e, i) => {
+    const [x1, y1] = S.pos[e.u], [x2, y2] = S.pos[e.v];
+    const ln = svgEl("line", { x1, y1, x2, y2, class: "edge" + (e.indoor ? " indoor" : "") }, L.edges);
+    ln.style.animationDelay = `${120 + i * 8}ms`;
+    svgEl("title", {}, ln).textContent = `${e.u} ↔ ${e.v}: ${e.weight == null ? "unknown" : e.weight + " s"}`;
+    S.edgeEls.push({ el: ln, u: e.u, v: e.v });
+
+    const txt = e.weight == null ? "?" : String(e.weight);
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, w = txt.length * 7 + 12;
+    const lg = svgEl("g", { class: "costlbl" }, L.labels);
+    lg.style.animationDelay = `${300 + i * 8}ms`;
+    svgEl("rect", { x: mx - w / 2, y: my - 9, width: w, height: 18, rx: 9 }, lg);
+    svgEl("text", { x: mx, y: my }, lg).textContent = txt;
+  });
+
+  const r = g.nodes.length <= 12 ? 22 : 18;
+  S.nodeR = r; S.nodeEls = {};
+  g.nodes.forEach((n, i) => {
+    const [x, y] = S.pos[n.id];
+    const grp = svgEl("g", { class: "node" + (n.indoor ? " indoor" : "") }, L.nodes);
+    const c = svgEl("circle", { cx: x, cy: y, r, class: "body" }, grp);
+    c.style.animationDelay = `${i * 22}ms`;
+    const t = svgEl("text", { x, y }, grp);
+    t.textContent = n.id; t.style.animationDelay = `${i * 22 + 150}ms`;
+    if (n.id.length > 3) t.style.fontSize = "10px";
+    svgEl("title", {}, grp).textContent = `${n.id} · ${n.degree} connection${n.degree === 1 ? "" : "s"}${n.indoor ? " · indoor option" : ""}`;
+    grp.addEventListener("click", ev => { if (!S.dragged) onNodeClick(n.id); });
+    grp.addEventListener("mouseenter", () => hoverNode(n.id, true));
+    grp.addEventListener("mouseleave", () => hoverNode(n.id, false));
+    S.nodeEls[n.id] = grp;
+  });
+
+  $("#legend").innerHTML = `
+    <span><i class="sw" style="background:var(--start)"></i>Start</span>
+    <span><i class="sw" style="background:var(--goal)"></i>Goal</span>
+    ${g.blocked.length ? '<span><i class="sw line" style="border-color:var(--blocked)"></i>Blocked</span>' : ""}
+    ${g.edges.some(e => e.indoor) ? '<span><i class="sw line" style="border-color:var(--indoor)"></i>Indoor route</span>' : ""}
+    <span><i class="sw" style="border:2px dashed var(--muted);background:none"></i>Expanded</span>`;
+
+  $("#showCosts").dispatchEvent(new Event("change"));
+  fitView();
+  paintState();
+}
+
+function hoverNode(id, on) {
+  for (const e of S.edgeEls) if (e.u === id || e.v === id) e.el.classList.toggle("hot", on);
+}
+
+// Re-colours start/goal/path/explored without rebuilding the whole map.
+function paintState() {
+  if (!S.graph) return;
+  const L = S.layers;
+  L.routes.innerHTML = ""; L.halos.innerHTML = "";
+
+  const ok = S.results.filter(r => r.status === "ok" && r.found && r.path.length > 1);
+  const onPath = new Set(ok.flatMap(r => r.path));
+  const widths = [11, 6.5, 3];             // stacked stripes so overlapping routes stay visible
+  ok.forEach((r, i) => {
+    const pts = r.path.map(id => S.pos[id]);
+    let len = 0;
+    for (let j = 1; j < pts.length; j++) len += Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]);
+    const pl = svgEl("polyline", { points: pts.map(p => p.join(",")).join(" "), class: "routeline",
+                                   stroke: COLORS[r.id], "stroke-width": widths[i] || 3 }, L.routes);
+    pl.style.cssText = `--len:${len};stroke-dasharray:${len};animation:draw .9s ease ${i * 0.15}s both`;
+  });
+
+  const f = S.results.find(r => r.id === S.focus && r.status === "ok");
+  if (f) for (const id of f.explored) {
+    if (id === S.start || id === S.goal) continue;
+    const [x, y] = S.pos[id];
+    svgEl("circle", { cx: x, cy: y, r: S.nodeR + 6, class: "halo", stroke: COLORS[f.id] }, L.halos);
+  }
+
+  for (const [id, grp] of Object.entries(S.nodeEls)) {
+    grp.classList.toggle("start", id === S.start);
+    grp.classList.toggle("goal", id === S.goal);
+    grp.classList.toggle("onpath", onPath.has(id));
+  }
+  for (const [id, col] of [[S.start, "var(--start)"], [S.goal, "var(--goal)"]]) {
+    if (!id || !S.pos[id]) continue;
+    const [x, y] = S.pos[id];
+    svgEl("circle", { cx: x, cy: y, r: S.nodeR, class: "pulse", stroke: col }, L.halos);
+  }
+  syncSelects();
+}
+
+function onNodeClick(id) {
+  if (S.turn === "start") {
+    S.start = id; if (S.goal === id) S.goal = null; S.turn = "goal";
+    toast(`Start set to ${id}. Now click a goal`);
+  } else {
+    if (id === S.start) return toast("Goal must be different from the start");
+    S.goal = id; S.turn = "start";
+  }
+  S.results = []; S.focus = null;
+  renderResults(); paintState();
+}
+
+/* ---------------- stats + result cards ---------------- */
+function renderStats() {
+  const s = S.graph.stats;
+  const items = [["Nodes", s.nodes], ["Edges", s.edges], ["Avg degree", s.avg_degree],
+    ["Cost range", s.cost_min == null ? "—" : `${s.cost_min}–${s.cost_max} s`], ["Mean cost", s.cost_mean == null ? "—" : s.cost_mean + " s"],
+    ["Blocked", s.blocked], ["Components", s.components]];
+  if (S.graph.seed != null) items.push(["Seed", S.graph.seed]);
+  $("#stats").innerHTML = items.map(([k, v]) => `<div class="stat">${k}<b>${v}</b></div>`).join("");
+}
+
+function renderResults() {
+  const box = $("#results");
+  if (!S.results.length) {
+    box.innerHTML = `<div class="empty">Tick the algorithms above and press <b>Run selected</b> to compare routes
+      from <b>${S.start || "?"}</b> to <b>${S.goal || "?"}</b>.</div>`;
+    return;
+  }
+  box.innerHTML = "";
+  for (const r of S.results) {
+    const card = document.createElement("div");
+    card.className = "result" + (r.id === S.focus ? " focus" : "");
+    card.style.setProperty("--c", COLORS[r.id]);
+    let body;
+    if (r.status === "pending") {
+      body = `<div class="pending">Not added yet. Plug your function into <code>ALGORITHMS["${r.id}"]</code> in <code>app.py</code>.</div>`;
+    } else if (r.status === "error") {
+      body = `<div class="pending" style="color:var(--blocked)">${r.message}</div>`;
+    } else if (!r.found) {
+      body = `<dl class="kv"><dt>Result</dt><dd style="color:var(--blocked)">No route</dd>
+              <dt>Nodes expanded</dt><dd>${r.nodes_expanded}</dd><dt>Run time</dt><dd>${r.time_ms.toFixed(3)} ms</dd></dl>`;
+    } else {
+      body = `<dl class="kv"><dt>Path cost</dt><dd>${fmtTime(r.cost)}</dd>
+              <dt>Nodes expanded</dt><dd>${r.nodes_expanded}</dd>
+              <dt>Hops</dt><dd>${r.path.length - 1}</dd>
+              <dt>Run time</dt><dd>${r.time_ms.toFixed(3)} ms</dd></dl>
+              <div class="route">${r.path.map(p => `<span>${p}</span>`).join("<i>→</i>")}</div>`;
+    }
+    card.innerHTML = `<h3><i class="sw"></i>${r.name}</h3>${body}`;
+    card.addEventListener("click", () => {
+      if (r.status !== "ok") return;
+      S.focus = r.id;
+      document.querySelectorAll(".result").forEach(c => c.classList.remove("focus"));
+      card.classList.add("focus"); paintState();
+    });
+    box.appendChild(card);
+  }
+}
+
+/* ---------------- pan / zoom ---------------- */
+function setVB() { const v = S.vb; $("#svg").setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`); }
+function fitView() { S.vb = { x: 0, y: 0, w: W, h: H }; setVB(); }
+function zoomAt(cx, cy, f) {
+  const v = S.vb, nw = Math.min(Math.max(v.w * f, W * 0.25), W * 2.5), real = nw / v.w;
+  v.x = cx - (cx - v.x) * real; v.y = cy - (cy - v.y) * real; v.w = nw; v.h = v.h * real; setVB();
+}
+function toSvg(e) {
+  const r = $("#svg").getBoundingClientRect(), v = S.vb;
+  return [v.x + (e.clientX - r.left) / r.width * v.w, v.y + (e.clientY - r.top) / r.height * v.h];
+}
+function setupPanZoom() {
+  const svg = $("#svg");
+  svg.addEventListener("wheel", e => { e.preventDefault(); const [x, y] = toSvg(e); zoomAt(x, y, e.deltaY < 0 ? 0.88 : 1.14); }, { passive: false });
+  let drag = null;
+  svg.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY, vb: { ...S.vb } }; S.dragged = false; });
+  window.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const r = svg.getBoundingClientRect(), dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.hypot(dx, dy) > 4) { S.dragged = true; svg.classList.add("dragging"); }
+    if (!S.dragged) return;
+    S.vb.x = drag.vb.x - dx / r.width * S.vb.w; S.vb.y = drag.vb.y - dy / r.height * S.vb.h; setVB();
+  });
+  window.addEventListener("pointerup", () => { drag = null; svg.classList.remove("dragging"); setTimeout(() => S.dragged = false, 0); });
+  $("#zin").onclick = () => zoomAt(S.vb.x + S.vb.w / 2, S.vb.y + S.vb.h / 2, 0.8);
+  $("#zout").onclick = () => zoomAt(S.vb.x + S.vb.w / 2, S.vb.y + S.vb.h / 2, 1.25);
+  $("#zfit").onclick = fitView;
+}
+
+/* ---------------- wiring ---------------- */
+async function init() {
+  try { S.config = await api("/api/config"); }
+  catch (e) { $("#emptyMap").textContent = "Could not reach app.py. Is the server running?"; return; }
+  buildControls();
+  $("#preset").value = "small_sparse";
+  applyPreset();
+
+  $("#preset").addEventListener("change", () => { applyPreset(); generate(); });
+  $("#seed").addEventListener("change", generate);
+  $("#dice").addEventListener("click", () => { $("#seed").value = ""; generate(); });
+  $("#generate").addEventListener("click", generate);
+  $("#band").addEventListener("change", randomPair);
+  $("#pair").addEventListener("click", randomPair);
+  $("#startSel").addEventListener("change", e => setPair(e.target.value || null, S.goal === e.target.value ? null : S.goal));
+  $("#goalSel").addEventListener("change", e => setPair(S.start === e.target.value ? null : S.start, e.target.value || null));
+  $("#run").addEventListener("click", run);
+  $("#showCosts").addEventListener("change", e => { if (S.layers.labels) S.layers.labels.style.display = e.target.checked ? "" : "none"; });
+  setupPanZoom();
+  generate();
+}
+init();
+</script>
+</body>
+</html>
